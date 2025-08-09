@@ -1,0 +1,46 @@
+services:
+  traefik:
+    image: "traefik:v3.3"
+    restart: always
+    command:
+      - "--api=true"
+      - "--providers.file.filename=/etc/traefik/routes.yml"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.mytlschallenge.acme.httpchallenge=true"
+      - "--certificatesresolvers.mytlschallenge.acme.httpchallenge.entryPoint=web"
+      - "--certificatesresolvers.mytlschallenge.acme.email=${SSL_EMAIL}"
+      - "--certificatesresolvers.mytlschallenge.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - traefik_data:/letsencrypt
+      - /opt/n8n/htpasswd:/etc/traefik/htpasswd:ro
+      - ./traefik-routes.yml:/etc/traefik/routes.yml:ro
+
+  n8n:
+    image: local/n8n-extended:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.n8n
+    restart: always
+    ports:
+      - "127.0.0.1:5678:5678"
+    environment:
+      - N8N_HOST=${SUBDOMAIN}.${DOMAIN_NAME}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - NODE_ENV=${NODE_ENV}
+      - WEBHOOK_URL=https://${SUBDOMAIN}.${DOMAIN_NAME}/
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
+      - N8N_EDITOR_BASE_URL=https://${SUBDOMAIN}.${DOMAIN_NAME}/
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./local-files:/files
+
+volumes:
+  n8n_data:
+  traefik_data:

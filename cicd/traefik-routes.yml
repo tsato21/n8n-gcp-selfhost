@@ -1,0 +1,70 @@
+http:
+  routers:
+    n8n-ui-html:
+      rule: "Host(`auto-workflow.tiger-tiger.dev`) && HeaderRegexp(`Accept`, `text/html`) && PathPrefix(`/`) && !PathPrefix(`/rest`) && !PathPrefix(`/webhook`)"
+      service: n8n
+      tls:
+        certResolver: mytlschallenge
+      entryPoints:
+        - websecure
+      middlewares:
+        - n8n-auth
+        - n8n-headers
+        - n8n-ratelimit
+      priority: 20
+
+    n8n-ui-other:
+      rule: "Host(`auto-workflow.tiger-tiger.dev`) && !HeaderRegexp(`Accept`, `text/html`) && PathPrefix(`/`) && !PathPrefix(`/rest`) && !PathPrefix(`/webhook`)"
+      service: n8n
+      tls:
+        certResolver: mytlschallenge
+      entryPoints:
+        - websecure
+      middlewares:
+        - n8n-headers
+        - n8n-ratelimit
+      priority: 10
+
+    n8n-api:
+      rule: "Host(`auto-workflow.tiger-tiger.dev`) && (PathPrefix(`/rest`) || PathPrefix(`/webhook`))"
+      service: n8n
+      tls:
+        certResolver: mytlschallenge
+      entryPoints:
+        - websecure
+      middlewares:
+        - n8n-headers
+      priority: 30
+
+  services:
+    n8n:
+      loadBalancer:
+        servers:
+          - url: "http://n8n:5678"
+        healthCheck:
+          path: /healthz
+          interval: 10s
+          timeout: 3s
+
+  middlewares:
+    n8n-auth:
+      basicAuth:
+        usersFile: /etc/traefik/htpasswd
+        removeHeader: true
+
+    n8n-headers:
+      headers:
+        stsSeconds: 315360000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        forceSTSHeader: true
+        browserXssFilter: true
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: "no-referrer"
+
+    n8n-ratelimit:
+      rateLimit:
+        average: 100
+        burst: 200
+        period: 1s
