@@ -1,0 +1,128 @@
+steps:
+  - name: gcr.io/cloud-builders/gcloud
+    id: Prepare .env
+    entrypoint: bash
+    args:
+      - -lc
+      - |
+        set -euo pipefail
+        gcloud secrets versions access latest \
+          --secret=${_SECRET_NAME} \
+          --project=${PROJECT_ID} > .env
+        chmod 600 .env
+
+  - name: gcr.io/cloud-builders/gcloud
+    id: Prepare SSH key
+    entrypoint: bash
+    args:
+      - -lc
+      - |
+        set -euo pipefail
+        gcloud secrets versions access latest \
+          --secret=${_SSH_KEY_SECRET_NAME} \
+          --project=${PROJECT_ID} > cloudbuild-ssh-key
+        chmod 600 cloudbuild-ssh-key
+        if ! ssh-keygen -y -f cloudbuild-ssh-key > /dev/null 2>&1; then
+          if grep -qa 'bcrypt' cloudbuild-ssh-key; then
+            echo 'ERROR: Secret の SSH 秘密鍵がパスフレーズ保護されています。-N "" で生成し直し Secret/VM 公開鍵を更新してください。' >&2
+          else
+            echo 'ERROR: SSH 秘密鍵を読み込めません（形式不正/破損の可能性）。' >&2
+          fi
+          exit 1
+        fi
+        if [ ! -f cloudbuild-ssh-key.pub ]; then
+          ssh-keygen -y -f cloudbuild-ssh-key > cloudbuild-ssh-key.pub
+        fi
+        chmod 644 cloudbuild-ssh-key.pub
+
+  - name: gcr.io/cloud-builders/gcloud
+    id: Package source
+    entrypoint: bash
+    args:
+      - -lc
+      - |
+        set -euo pipefail
+        tar --exclude-vcs --exclude='.env' -czf src.tgz .
+
+  - name: gcr.io/cloud-builders/gcloud
+    id: Copy files to VM (IAP)
+    entrypoint: bash
+    args:
+      - -lc
+      - |
+        set -euxo pipefail
+        gcloud --quiet compute ssh cloudbuild-sa@${_INSTANCE_NAME} \
+          --project=${PROJECT_ID} \
+          --zone=${_ZONE} \
+          --tunnel-through-iap \
+          --ssh-key-file=cloudbuild-ssh-key \
+          --ssh-flag=-o --ssh-flag=BatchMode=yes \
+          --ssh-flag=-o --ssh-flag=StrictHostKeyChecking=no \
+          --ssh-flag=-o --ssh-flag=UserKnownHostsFile=/dev/null \
+          --ssh-flag=-o --ssh-flag=IdentitiesOnly=yes \
+          --command='sudo mkdir -p /opt/n8n && sudo chown -R $(whoami):$(whoami) /opt/n8n'
+
+        success=false
+        for i in 1 2 3; do
+          if gcloud --quiet compute scp .env src.tgz cloudbuild-sa@${_INSTANCE_NAME}:/opt/n8n/ \
+              --project=${PROJECT_ID} \
+              --zone=${_ZONE} \
+              --tunnel-through-iap \
+              --ssh-key-file=cloudbuild-ssh-key \
+              --scp-flag=-o --scp-flag=BatchMode=yes \
+              --scp-flag=-o --scp-flag=StrictHostKeyChecking=no \
+              --scp-flag=-o --scp-flag=UserKnownHostsFile=/dev/null \
+              --scp-flag=-o --scp-flag=IdentitiesOnly=yes; then
+            success=true; break
+          else
+            sleep 3
+          fi
+        done
+        if [ "$success" != true ]; then
+          echo "ERROR: Failed to copy files to VM after 3 attempts." >&2
+          exit 1
+        fi
+
+  - name: gcr.io/cloud-builders/gcloud
+    id: Deploy to VM
+    entrypoint: bash
+    args:
+      - -lc
+      - |
+        set -euxo pipefail
+        gcloud --quiet compute ssh cloudbuild-sa@${_INSTANCE_NAME} \
+          --project=${PROJECT_ID} \
+          --zone=${_ZONE} \
+          --tunnel-through-iap \
+          --ssh-key-file=cloudbuild-ssh-key \
+          --ssh-flag=-o --ssh-flag=BatchMode=yes \
+          --ssh-flag=-o --ssh-flag=StrictHostKeyChecking=no \
+          --ssh-flag=-o --ssh-flag=UserKnownHostsFile=/dev/null \
+          --ssh-flag=-o --ssh-flag=IdentitiesOnly=yes \
+          --command=' 
+            until command -v docker > /dev/null 2>&1; do
+              echo "Waiting for Docker to be available..."; sleep 5
+            done
+            sudo mkdir -p /opt/n8n && sudo chown -R $(whoami):$(whoami) /opt/n8n
+            cd /opt/n8n
+            tar xzf src.tgz
+            if grep -q "^BASIC_AUTH_USERS=" .env; then
+              grep '^BASIC_AUTH_USERS=' .env | sed 's/^BASIC_AUTH_USERS=//' > /opt/n8n/htpasswd
+              chmod 600 /opt/n8n/htpasswd
+            else
+              echo "WARN: BASIC_AUTH_USERS not found in .env; BasicAuth may be disabled." >&2
+            fi
+            [ -f .env ] && chmod 600 .env || true
+            # Ensure Compose finds .env regardless of v1/v2 semantics
+            cp -f .env cicd/.env || true
+            chmod 600 cicd/.env || true
+            cd cicd
+            # Pull prebuilt service images (e.g., traefik) and base images
+            sudo docker compose pull
+            # Build custom n8n image with additional utilities installed
+            sudo docker compose build --pull n8n
+            sudo docker compose up -d
+          '
+
+options:
+  logging: CLOUD_LOGGING_ONLY

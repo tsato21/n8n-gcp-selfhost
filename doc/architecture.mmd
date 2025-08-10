@@ -1,0 +1,43 @@
+flowchart TD
+
+  %% 外部 利用者と名前解決と証明書
+  subgraph Internet[インターネット]
+    U[ユーザーのブラウザ<br>操作: まず Basic 認証<br>次に 二段階認証]
+    DNS[DNS]
+    LE[Let's Encrypt 証明局]
+  end
+
+  %% GCP 内の主要構成
+  subgraph GCP[GCP]
+    IP[静的 外部IP]
+    CB[Cloud Build]
+    SM[Secret Manager]
+    IAP[IAP Proxy]
+
+    subgraph VM[Compute Engine VM 1台]
+      Traefik[Traefik リバースプロキシ と TLS 終端]
+      N8N[n8n アプリ本体]
+      end
+  end
+
+  %% ランタイムの流れ ユーザーアクセス
+  U -->|<subdomain>.<domain>| DNS --> IP --> Traefik --> N8N
+  Traefik <-->|証明書を自動発行 と 自動更新 ACME| LE
+
+  %% リリースの流れ 自動デプロイ
+  GH[GitHub リポジトリ] -->|タグ push| CB
+  CB -.->|デプロイ時に Secrets を取得| SM
+  CB -->|IAP 経由で SSH と SCP| IAP --> VM
+
+  %% 用語の説明: 一般定義を中心に記載
+  subgraph Notes[用語の説明]
+    N_SSH[SSH と SCP: 安全な遠隔ログイン と ファイル転送<br>公開鍵: VM に登録<br>秘密鍵: Secret Manager に保管 Cloud Build が使用]
+    N_IAP[IAP: Google の社内通用口のようなゲート<br>許可された主体のみ。インターネット越しに安全にトンネル接続]
+    N_RP[リバースプロキシ: Web の窓口係<br>外向き: 入口を一つに集約<br>内向き: 振り分け と ヘッダ付与]
+    N_TLS[TLS と 終端: インターネット暗号通信<br>終端: どこで暗号を解くか<br>本構成は Traefik で復号してから n8n]
+    N_CA[証明局: 信頼された第三者<br>ドメイン や 組織の正当性を確認して証明書を発行]
+    N_ACME[ACME: 証明局と自動でやり取りする公開規格<br>所有確認 と 発行 と 更新 を自動化 手動更新は不要]
+    N_SM[Secret Manager: GCP の金庫 セキュアボックス<br>機密を暗号化して保管<br>権限のある主体のみ取得できる]
+    N_BA[Basic 認証: ブラウザ標準の認証ダイアログで ID と パスワードを入力]
+    N_2FA[二段階認証: パスワード と ワンタイムコードの二要素]
+  end

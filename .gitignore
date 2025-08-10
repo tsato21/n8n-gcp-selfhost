@@ -1,0 +1,27 @@
+# Sensitive local env
+.env
+.env.*.local
+
+# macOS cruft
+.DS_Store
+
+# Traefik certificate storage (if bind-mounted)
+letsencrypt/
+acme.json
+
+# n8n local file I/O: keep dir, ignore contents
+local-files/*
+!local-files/.gitkeep
+
+# Terraform local state (if not using remote backend)
+.terraform/
+terraform.tfstate
+terraform.tfstate.*
+*.tfvars
+!example.tfvars
+.terraform.tfstate.lock.info
+cloudbuild-ssh-key
+cloudbuild-ssh-key.pub
+
+# Other
+/troubleshooting*

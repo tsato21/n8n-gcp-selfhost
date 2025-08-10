@@ -1,0 +1,100 @@
+services:
+  traefik:
+    image: "traefik:v2.10"
+    restart: always
+    command:
+      - "--api=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.mytlschallenge.acme.tlschallenge=true"
+      - "--certificatesresolvers.mytlschallenge.acme.email=${SSL_EMAIL}"
+      - "--certificatesresolvers.mytlschallenge.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - traefik_data:/letsencrypt
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /opt/n8n/htpasswd:/etc/traefik/htpasswd:ro
+
+  n8n:
+    image: local/n8n-extended:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.n8n
+    restart: always
+    ports:
+      - "127.0.0.1:5678:5678"
+    labels:
+      - traefik.enable=true
+
+      # --- UI(HTML) 用ルーター（BasicAuthあり）：Accept に text/html を含む場合のみ ---
+      - traefik.http.routers.n8n-ui-html.rule=Host(`${SUBDOMAIN}.${DOMAIN_NAME}`) && HeadersRegexp(`Accept`, `text/html`) && PathPrefix(`/`) && !PathPrefix(`/rest`) && !PathPrefix(`/webhook`)
+      - traefik.http.routers.n8n-ui-html.tls=true
+      - traefik.http.routers.n8n-ui-html.tls.certresolver=mytlschallenge
+      - traefik.http.routers.n8n-ui-html.entrypoints=websecure
+      - traefik.http.routers.n8n-ui-html.middlewares=n8n-auth@docker,n8n-headers@docker,n8n-ratelimit@docker
+      - traefik.http.routers.n8n-ui-html.priority=20
+      - traefik.http.routers.n8n-ui-html.service=n8n
+
+      # --- UI(非HTML) 用ルーター（BasicAuthなし）：HTML 以外を包括的に許可 ---
+      - traefik.http.routers.n8n-ui-other.rule=Host(`${SUBDOMAIN}.${DOMAIN_NAME}`) && !HeadersRegexp(`Accept`, `text/html`) && PathPrefix(`/`) && !PathPrefix(`/rest`) && !PathPrefix(`/webhook`)
+      - traefik.http.routers.n8n-ui-other.tls=true
+      - traefik.http.routers.n8n-ui-other.tls.certresolver=mytlschallenge
+      - traefik.http.routers.n8n-ui-other.entrypoints=websecure
+      - traefik.http.routers.n8n-ui-other.middlewares=n8n-headers@docker,n8n-ratelimit@docker
+      - traefik.http.routers.n8n-ui-other.priority=10
+      - traefik.http.routers.n8n-ui-other.service=n8n
+
+      # --- API用ルーター（BasicAuthなし） ---
+      - traefik.http.routers.n8n-api.rule=Host(`${SUBDOMAIN}.${DOMAIN_NAME}`) && (PathPrefix(`/rest`) || PathPrefix(`/webhook`))
+      - traefik.http.routers.n8n-api.tls=true
+      - traefik.http.routers.n8n-api.tls.certresolver=mytlschallenge
+      - traefik.http.routers.n8n-api.entrypoints=websecure
+      # API は最優先で評価（UI と競合しないように）
+      - traefik.http.routers.n8n-api.priority=30
+      - traefik.http.routers.n8n-api.service=n8n
+
+      # --- BasicAuth設定（usersfile を利用。$ を含む bcrypt を安全に取り扱う） ---
+      - traefik.http.middlewares.n8n-auth.basicauth.usersfile=/etc/traefik/htpasswd
+      - traefik.http.middlewares.n8n-auth.basicauth.removeheader=true
+
+
+      # --- Security Headers ---
+      - traefik.http.middlewares.n8n-headers.headers.stsSeconds=315360000
+      - traefik.http.middlewares.n8n-headers.headers.browserXssFilter=true
+      - traefik.http.middlewares.n8n-headers.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.n8n-headers.headers.forceSTSHeader=true
+      - traefik.http.middlewares.n8n-headers.headers.stsIncludeSubdomains=true
+      - traefik.http.middlewares.n8n-headers.headers.stsPreload=true
+      - traefik.http.middlewares.n8n-headers.headers.frameDeny=true
+      - traefik.http.middlewares.n8n-headers.headers.referrerPolicy=no-referrer
+
+      # --- Rate Limit (UI向け) ---
+      - traefik.http.middlewares.n8n-ratelimit.ratelimit.average=10
+      - traefik.http.middlewares.n8n-ratelimit.ratelimit.burst=20
+      - traefik.http.middlewares.n8n-ratelimit.ratelimit.period=1s
+
+      # --- Service指定 ---
+      - traefik.http.services.n8n.loadbalancer.server.port=5678
+
+    environment:
+      - N8N_HOST=${SUBDOMAIN}.${DOMAIN_NAME}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - NODE_ENV=${NODE_ENV}
+      - WEBHOOK_URL=https://${SUBDOMAIN}.${DOMAIN_NAME}/
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
+      - N8N_BASIC_AUTH_ACTIVE=false
+      - N8N_EDITOR_BASE_URL=https://${SUBDOMAIN}.${DOMAIN_NAME}/
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./local-files:/files
+
+volumes:
+  n8n_data:
+  traefik_data:
