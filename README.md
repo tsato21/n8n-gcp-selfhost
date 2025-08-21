@@ -3,11 +3,11 @@
 ## 1. n8nとは
 n8n は OSS のワークフロー自動化ツール。
 - ワークフロー自動化: 複数のサービス間でのデータ連携や処理を自動化する仕組み
-- クラウド版とセルフホストの違いは[こちら](doc/n8n-cost.md)を参照。
+ - クラウド版とセルフホストの違いは[こちら](doc/n8n-pricing-and-hosting.md)を参照。
 
 ## 2. 当該リポジトリについて
 - GCP のリソースで n8n をセルフホスト（コミュニティ版）
-  - [doc/n8n-cost.md](doc/n8n-cost.md) > `2-2. 公開アクセス`で構築
+  - [doc/n8n-pricing-and-hosting.md](doc/n8n-pricing-and-hosting.md) > `2-2. 公開アクセス`で構築
 - Terraform で GCP 環境を構築
 - デプロイは Cloud Build（タグ push で自動）→ VM に SSH → `cicd/docker-compose.yml` 起動
 - アーキテクチャー概要: [doc/architecture.mmd](doc/architecture.mmd) 
@@ -104,7 +104,7 @@ n8n は OSS のワークフロー自動化ツール。
 
 ## 6. n8n コンテナの拡張
 - ワークフローで追加ユーティリティを利用するため、公式 n8n イメージを一部拡張。
-- 詳細は「[doc/n8n-cost.md](doc/n8n-cost.md)」を参照。
+- 詳細は「[doc/n8n-pricing-and-hosting.md](doc/n8n-pricing-and-hosting.md)」を参照。
 
 ## 7. 参考文献
 - [How to Deploy n8n on Google Cloud Free Tier | Complete n8n Self-Hosting Tutorial](https://www.youtube.com/watch?v=NNTbwOCPUww&t)
