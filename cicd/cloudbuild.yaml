@@ -113,13 +113,19 @@ steps:
               echo "WARN: BASIC_AUTH_USERS not found in .env; BasicAuth may be disabled." >&2
             fi
             [ -f .env ] && chmod 600 .env || true
-            # Ensure Compose finds .env regardless of v1/v2 semantics
             cp -f .env cicd/.env || true
             chmod 600 cicd/.env || true
             cd cicd
-            # Pull prebuilt service images (e.g., traefik) and base images
+            if ! docker compose version >/dev/null 2>&1; then
+              if command -v apt-get >/dev/null 2>&1; then
+                sudo apt-get update -y || true
+                sudo apt-get install -y docker-compose-plugin
+              else
+                echo "ERROR: docker compose (v2) が見つからず、apt-get も利用できません。VM 側に Compose v2 を事前導入してください。" >&2
+                exit 1
+              fi
+            fi
             sudo docker compose pull
-            # Build custom n8n image with additional utilities installed
             sudo docker compose build --pull n8n
             sudo docker compose up -d
           '
