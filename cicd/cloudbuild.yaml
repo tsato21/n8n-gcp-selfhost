@@ -127,8 +127,21 @@ steps:
             fi
             sudo docker compose pull
             sudo docker compose build --pull n8n
-            sudo docker compose down --remove-orphans || true
+            sudo docker compose down --remove-orphans 2>/dev/null || true
             sudo docker compose up -d
+
+            echo "Waiting for n8n to become healthy..."
+            for i in $(seq 1 30); do
+              if curl -sf -o /dev/null http://localhost:5678/healthz 2>/dev/null; then
+                echo "n8n is healthy (attempt $i)"
+                exit 0
+              fi
+              sleep 5
+            done
+            echo "ERROR: n8n did not become healthy within 150 seconds" >&2
+            sudo docker compose ps
+            sudo docker compose logs --tail=50 n8n
+            exit 1
           '
 
 options:
