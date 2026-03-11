@@ -128,7 +128,6 @@ steps:
               fi
             fi
             sudo docker compose pull
-            sudo docker compose build n8n
             sudo docker compose down --remove-orphans 2>/dev/null || true
             sudo docker compose up -d
 

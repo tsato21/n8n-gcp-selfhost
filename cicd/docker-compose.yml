@@ -22,10 +22,7 @@ services:
       - ./traefik-routes.yml:/etc/traefik/routes.yml:ro
 
   n8n:
-    image: local/n8n-extended:latest
-    build:
-      context: .
-      dockerfile: Dockerfile.n8n
+    image: docker.n8n.io/n8nio/n8n:2.11.2
     restart: always
     ports:
       - "127.0.0.1:5678:5678"
