@@ -1,4 +1,4 @@
-# n8n GCP Self-host  f
+# n8n GCP Self-host
 
 ## 1. n8nとは
 n8n は OSS のワークフロー自動化ツール。
