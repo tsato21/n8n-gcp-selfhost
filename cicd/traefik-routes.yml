@@ -32,6 +32,8 @@ http:
         certResolver: mytlschallenge
       entryPoints:
         - websecure
+      middlewares:
+        - n8n-headers
       priority: 30
 
   services:
@@ -39,6 +41,10 @@ http:
       loadBalancer:
         servers:
           - url: "http://n8n:5678"
+        healthCheck:
+          path: /healthz
+          interval: 10s
+          timeout: 3s
 
   middlewares:
     n8n-auth:
@@ -59,6 +65,6 @@ http:
 
     n8n-ratelimit:
       rateLimit:
-        average: 10
-        burst: 20
+        average: 100
+        burst: 200
         period: 1s

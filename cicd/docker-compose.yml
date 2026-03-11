@@ -36,7 +36,6 @@ services:
       - NODE_ENV=${NODE_ENV}
       - WEBHOOK_URL=https://${SUBDOMAIN}.${DOMAIN_NAME}/
       - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
-      - N8N_BASIC_AUTH_ACTIVE=false
       - N8N_EDITOR_BASE_URL=https://${SUBDOMAIN}.${DOMAIN_NAME}/
     volumes:
       - n8n_data:/home/node/.n8n
